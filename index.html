@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BigQuery Data Viewer</title>
+    
+    <!-- React -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    
+    <style>
+        .credentials-textarea {
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .data-table {
+            font-size: 13px;
+        }
+        .data-table th {
+            position: sticky;
+            top: 0;
+            background: inherit;
+            z-index: 10;
+        }
+        .json-viewer {
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // API URL - update this for production
+        const API_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3002' 
+            : '';  // Same origin in production
+
+        // Icons
+        const Database = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+            </svg>
+        );
+
+        const Key = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+        );
+
+        const Table = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+        );
+
+        const RefreshCw = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+        );
+
+        const Eye = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+        );
+
+        const Check = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+        );
+
+        const X = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        );
+
+        const ChevronDown = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+        );
+
+        const Moon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+            </svg>
+        );
+
+        const Sun = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+        );
+
+        const BigQueryPage = () => {
+            const [darkMode, setDarkMode] = useState(false);
+            
+            // Credentials state
+            const [projectId, setProjectId] = useState('');
+            const [clientEmail, setClientEmail] = useState('');
+            const [privateKey, setPrivateKey] = useState('');
+            const [isConnected, setIsConnected] = useState(false);
+            const [connectionStatus, setConnectionStatus] = useState(null);
+            const [connecting, setConnecting] = useState(false);
+            
+            // Data state
+            const [datasets, setDatasets] = useState([]);
+            const [selectedDataset, setSelectedDataset] = useState('');
+            const [tables, setTables] = useState([]);
+            const [selectedTable, setSelectedTable] = useState('');
+            const [tableData, setTableData] = useState(null);
+            const [tableSchema, setTableSchema] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            
+            // Pagination
+            const [rowLimit, setRowLimit] = useState(100);
+            const [currentPage, setCurrentPage] = useState(0);
+
+            useEffect(() => {
+                const savedDarkMode = localStorage.getItem('bq_darkMode') === 'true';
+                if (savedDarkMode) {
+                    document.documentElement.classList.add('dark');
+                }
+                setDarkMode(savedDarkMode);
+                
+                checkConnection();
+            }, []);
+
+            const toggleDarkMode = () => {
+                const newDarkMode = !darkMode;
+                setDarkMode(newDarkMode);
+                localStorage.setItem('bq_darkMode', newDarkMode);
+                if (newDarkMode) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            };
+
+            const checkConnection = async () => {
+                try {
+                    const response = await fetch(`${API_URL}/api/bigquery/status`);
+                    const data = await response.json();
+                    if (data.connected) {
+                        setIsConnected(true);
+                        setConnectionStatus({ success: true, message: 'Connected to BigQuery' });
+                        loadDatasets();
+                    }
+                } catch (err) {
+                    console.log('Not connected to BigQuery');
+                }
+            };
+
+            const handleConnect = async () => {
+                if (!projectId || !clientEmail || !privateKey) {
+                    setError('Please fill in all credential fields');
+                    return;
+                }
+
+                setConnecting(true);
+                setError(null);
+                setConnectionStatus(null);
+
+                try {
+                    const response = await fetch(`${API_URL}/api/bigquery/connect`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            projectId,
+                            clientEmail,
+                            privateKey
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok && data.success) {
+                        setIsConnected(true);
+                        setConnectionStatus({ success: true, message: 'Connected successfully!' });
+                        loadDatasets();
+                    } else {
+                        setConnectionStatus({ success: false, message: data.error || 'Connection failed' });
+                    }
+                } catch (err) {
+                    setConnectionStatus({ success: false, message: err.message });
+                } finally {
+                    setConnecting(false);
+                }
+            };
+
+            const handleDisconnect = async () => {
+                try {
+                    await fetch(`${API_URL}/api/bigquery/disconnect`, { method: 'POST' });
+                    setIsConnected(false);
+                    setDatasets([]);
+                    setTables([]);
+                    setSelectedDataset('');
+                    setSelectedTable('');
+                    setTableData(null);
+                    setConnectionStatus(null);
+                } catch (err) {
+                    console.error('Disconnect error:', err);
+                }
+            };
+
+            const loadDatasets = async () => {
+                setLoading(true);
+                try {
+                    const response = await fetch(`${API_URL}/api/bigquery/datasets`);
+                    const data = await response.json();
+                    if (data.datasets) {
+                        setDatasets(data.datasets);
+                    }
+                } catch (err) {
+                    setError('Failed to load datasets: ' + err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const loadTables = async (datasetId) => {
+                setSelectedDataset(datasetId);
+                setSelectedTable('');
+                setTableData(null);
+                setLoading(true);
+                
+                try {
+                    const response = await fetch(`${API_URL}/api/bigquery/tables/${datasetId}`);
+                    const data = await response.json();
+                    if (data.tables) {
+                        setTables(data.tables);
+                    }
+                } catch (err) {
+                    setError('Failed to load tables: ' + err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const loadTableData = async (tableId) => {
+                setSelectedTable(tableId);
+                setLoading(true);
+                setCurrentPage(0);
+                
+                try {
+                    const response = await fetch(
+                        `${API_URL}/api/bigquery/data/${selectedDataset}/${tableId}?limit=${rowLimit}&offset=0`
+                    );
+                    const data = await response.json();
+                    if (data.rows) {
+                        setTableData(data.rows);
+                        setTableSchema(data.schema);
+                    }
+                } catch (err) {
+                    setError('Failed to load table data: ' + err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const loadMoreData = async (page) => {
+                setLoading(true);
+                const offset = page * rowLimit;
+                
+                try {
+                    const response = await fetch(
+                        `${API_URL}/api/bigquery/data/${selectedDataset}/${selectedTable}?limit=${rowLimit}&offset=${offset}`
+                    );
+                    const data = await response.json();
+                    if (data.rows) {
+                        setTableData(data.rows);
+                        setCurrentPage(page);
+                    }
+                } catch (err) {
+                    setError('Failed to load more data: ' + err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const formatCellValue = (value) => {
+                if (value === null || value === undefined) return <span className="text-gray-400 italic">null</span>;
+                if (typeof value === 'object') return <span className="json-viewer">{JSON.stringify(value, null, 2)}</span>;
+                if (typeof value === 'boolean') return value ? 'true' : 'false';
+                return String(value);
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+                    {/* Header */}
+                    <header className="bg-white dark:bg-gray-800 shadow-lg border-b border-gray-200 dark:border-gray-700">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between items-center h-16">
+                                <div className="flex items-center gap-3">
+                                    <Database className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                                    <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                                        BigQuery Data Viewer
+                                    </h1>
+                                </div>
+                                <button
+                                    onClick={toggleDarkMode}
+                                    className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                                    title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                                >
+                                    {darkMode ? (
+                                        <Sun className="w-5 h-5 text-yellow-500" />
+                                    ) : (
+                                        <Moon className="w-5 h-5 text-gray-700" />
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        {/* Connection Status Banner */}
+                        {connectionStatus && (
+                            <div className={`mb-6 p-4 rounded-lg flex items-center gap-3 ${
+                                connectionStatus.success 
+                                    ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800' 
+                                    : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                            }`}>
+                                {connectionStatus.success ? (
+                                    <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+                                ) : (
+                                    <X className="w-5 h-5 text-red-600 dark:text-red-400" />
+                                )}
+                                <span className={connectionStatus.success ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'}>
+                                    {connectionStatus.message}
+                                </span>
+                            </div>
+                        )}
+
+                        {/* Error Banner */}
+                        {error && (
+                            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                                <p className="text-red-800 dark:text-red-200">{error}</p>
+                                <button 
+                                    onClick={() => setError(null)}
+                                    className="mt-2 text-sm text-red-600 dark:text-red-400 hover:underline"
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Credentials Section */}
+                        {!isConnected && (
+                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <Key className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                        BigQuery Credentials
+                                    </h2>
+                                </div>
+                                
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            GOOGLE_PROJECT_ID
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={projectId}
+                                            onChange={(e) => setProjectId(e.target.value)}
+                                            placeholder="your-project-id"
+                                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            GOOGLE_CLIENT_EMAIL
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={clientEmail}
+                                            onChange={(e) => setClientEmail(e.target.value)}
+                                            placeholder="service-account@project.iam.gserviceaccount.com"
+                                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            GOOGLE_PRIVATE_KEY
+                                        </label>
+                                        <textarea
+                                            value={privateKey}
+                                            onChange={(e) => setPrivateKey(e.target.value)}
+                                            placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+                                            rows={6}
+                                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 credentials-textarea"
+                                        />
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                            Paste the entire private key including BEGIN and END markers
+                                        </p>
+                                    </div>
+                                    
+                                    <button
+                                        onClick={handleConnect}
+                                        disabled={connecting}
+                                        className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                        {connecting ? (
+                                            <>
+                                                <RefreshCw className="w-5 h-5 animate-spin" />
+                                                Connecting...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Database className="w-5 h-5" />
+                                                Connect to BigQuery
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Connected State - Data Browser */}
+                        {isConnected && (
+                            <>
+                                {/* Connection Info */}
+                                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                                            <span className="text-gray-900 dark:text-white font-medium">
+                                                Connected to BigQuery
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={handleDisconnect}
+                                            className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg transition-colors text-sm"
+                                        >
+                                            Disconnect
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Data Selection */}
+                                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+                                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                        <Table className="w-5 h-5" />
+                                        Browse Data
+                                    </h2>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {/* Dataset Selector */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                Dataset
+                                            </label>
+                                            <div className="relative">
+                                                <select
+                                                    value={selectedDataset}
+                                                    onChange={(e) => loadTables(e.target.value)}
+                                                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 appearance-none"
+                                                >
+                                                    <option value="">Select a dataset...</option>
+                                                    {datasets.map((ds) => (
+                                                        <option key={ds.id} value={ds.id}>{ds.id}</option>
+                                                    ))}
+                                                </select>
+                                                <ChevronDown className="w-5 h-5 absolute right-3 top-2.5 text-gray-400 pointer-events-none" />
+                                            </div>
+                                        </div>
+
+                                        {/* Table Selector */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                Table
+                                            </label>
+                                            <div className="relative">
+                                                <select
+                                                    value={selectedTable}
+                                                    onChange={(e) => loadTableData(e.target.value)}
+                                                    disabled={!selectedDataset}
+                                                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 appearance-none disabled:opacity-50"
+                                                >
+                                                    <option value="">Select a table...</option>
+                                                    {tables.map((t) => (
+                                                        <option key={t.id} value={t.id}>{t.id}</option>
+                                                    ))}
+                                                </select>
+                                                <ChevronDown className="w-5 h-5 absolute right-3 top-2.5 text-gray-400 pointer-events-none" />
+                                            </div>
+                                        </div>
+
+                                        {/* Row Limit */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                Rows per page
+                                            </label>
+                                            <select
+                                                value={rowLimit}
+                                                onChange={(e) => setRowLimit(parseInt(e.target.value))}
+                                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                            >
+                                                <option value={50}>50</option>
+                                                <option value={100}>100</option>
+                                                <option value={250}>250</option>
+                                                <option value={500}>500</option>
+                                                <option value={1000}>1000</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Refresh Button */}
+                                    {selectedTable && (
+                                        <div className="mt-4">
+                                            <button
+                                                onClick={() => loadTableData(selectedTable)}
+                                                disabled={loading}
+                                                className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors flex items-center gap-2"
+                                            >
+                                                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                                                Refresh Data
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Loading State */}
+                                {loading && (
+                                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-12 text-center">
+                                        <RefreshCw className="w-12 h-12 text-blue-600 dark:text-blue-400 mx-auto animate-spin mb-4" />
+                                        <p className="text-gray-600 dark:text-gray-400">Loading data...</p>
+                                    </div>
+                                )}
+
+                                {/* Data Table */}
+                                {!loading && tableData && tableData.length > 0 && (
+                                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+                                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                                            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                                <Eye className="w-5 h-5" />
+                                                {selectedDataset}.{selectedTable}
+                                            </h3>
+                                            <span className="text-sm text-gray-500 dark:text-gray-400">
+                                                Showing {tableData.length} rows (Page {currentPage + 1})
+                                            </span>
+                                        </div>
+                                        
+                                        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 data-table">
+                                                <thead className="bg-gray-50 dark:bg-gray-900">
+                                                    <tr>
+                                                        {tableSchema && tableSchema.map((field, idx) => (
+                                                            <th 
+                                                                key={idx}
+                                                                className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap"
+                                                            >
+                                                                <div>{field.name}</div>
+                                                                <div className="text-gray-400 dark:text-gray-500 font-normal normal-case">
+                                                                    {field.type}
+                                                                </div>
+                                                            </th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                                    {tableData.map((row, rowIdx) => (
+                                                        <tr key={rowIdx} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                                            {tableSchema && tableSchema.map((field, colIdx) => (
+                                                                <td 
+                                                                    key={colIdx}
+                                                                    className="px-4 py-2 text-gray-900 dark:text-gray-300 max-w-xs truncate"
+                                                                    title={typeof row[field.name] === 'object' ? JSON.stringify(row[field.name]) : String(row[field.name] ?? '')}
+                                                                >
+                                                                    {formatCellValue(row[field.name])}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {/* Pagination */}
+                                        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                                            <button
+                                                onClick={() => loadMoreData(currentPage - 1)}
+                                                disabled={currentPage === 0 || loading}
+                                                className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                ← Previous
+                                            </button>
+                                            <span className="text-sm text-gray-600 dark:text-gray-400">
+                                                Page {currentPage + 1}
+                                            </span>
+                                            <button
+                                                onClick={() => loadMoreData(currentPage + 1)}
+                                                disabled={tableData.length < rowLimit || loading}
+                                                className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Next →
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* No Data State */}
+                                {!loading && tableData && tableData.length === 0 && (
+                                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-12 text-center">
+                                        <Table className="w-16 h-16 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
+                                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Data</h3>
+                                        <p className="text-gray-600 dark:text-gray-400">This table appears to be empty.</p>
+                                    </div>
+                                )}
+
+                                {/* Select Table Prompt */}
+                                {!loading && !tableData && (
+                                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-12 text-center">
+                                        <Database className="w-16 h-16 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
+                                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Select a Table</h3>
+                                        <p className="text-gray-600 dark:text-gray-400">Choose a dataset and table above to view data.</p>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<BigQueryPage />);
+    </script>
+</body>
+</html>
